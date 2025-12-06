@@ -123,9 +123,9 @@ except Exception as e:
     exit(1)
 
 # 8. Generate synthetic data
-print("\n🎲 Generating 1,000 synthetic samples...")
+print("\n🎲 Generating 10,000 synthetic samples...")
 try:
-    synthetic = loaded_model.sample(1000)
+    synthetic = loaded_model.sample(10000)
     print(f"  ✅ Generated {len(synthetic)} samples")
     print(f"  Synthetic data shape: {synthetic.shape}")
     print(f"\n  Sample synthetic data:")
