@@ -7,6 +7,7 @@ dependencies = [
     "pandas>=2.0.0",
     "numpy>=1.24.0",
     "sdv>=1.0.0",
+    "sdmetrics>=0.14.0",
     "torch==2.7.0",
     "torchvision==0.22.0",
     "torchaudio==2.7.0",

@@ -22,6 +22,7 @@ from sdv.single_table import (
     GaussianCopulaSynthesizer,
     TVAESynthesizer,
 )
+from sdmetrics.single_column import KSComplement, TVComplement
 
 app = typer.Typer(help="SDV Synthesizer Test CLI for PyTorch 2.7 + CUDA 12.8")
 console = Console()
@@ -141,6 +142,84 @@ def display_data_sample(data: pd.DataFrame, title: str) -> None:
 
     for _, row in data.head(3).iterrows():
         table.add_row(*[str(v)[:20] for v in row.values])
+
+    console.print(table)
+
+
+def evaluate_quality(
+    real_data: pd.DataFrame,
+    synthetic_data: pd.DataFrame,
+    metadata: Metadata,
+) -> tuple[dict, float]:
+    """
+    Evaluate synthetic data quality using SDMetrics.
+
+    Uses KSComplement for numerical columns and TVComplement for categorical.
+    Returns per-column scores and overall average.
+    """
+    table_name = list(metadata.tables.keys())[0]
+    columns_meta = metadata.tables[table_name].columns
+
+    scores = {}
+
+    for col_name, col_info in columns_meta.items():
+        sdtype = col_info.get("sdtype", "unknown")
+
+        real_col = real_data[col_name]
+        synth_col = synthetic_data[col_name]
+
+        if sdtype == "numerical":
+            score = KSComplement.compute(real_col, synth_col)
+            metric_name = "KSComplement"
+        elif sdtype == "categorical":
+            score = TVComplement.compute(real_col, synth_col)
+            metric_name = "TVComplement"
+        else:
+            # Skip unknown types
+            continue
+
+        scores[col_name] = {
+            "type": sdtype,
+            "metric": metric_name,
+            "score": score,
+        }
+
+    avg_score = sum(s["score"] for s in scores.values()) / len(scores) if scores else 0.0
+
+    return scores, avg_score
+
+
+def display_quality_scores(scores: dict, avg_score: float) -> None:
+    """Display quality scores with Rich table."""
+    table = Table(title="Synthetic Data Quality Metrics")
+    table.add_column("Column", style="cyan")
+    table.add_column("Type", style="dim")
+    table.add_column("Metric", style="dim")
+    table.add_column("Score", justify="right")
+
+    for col_name, info in scores.items():
+        score = info["score"]
+
+        # Color code by score threshold
+        if score >= 0.9:
+            score_str = f"[green]{score:.4f}[/green]"
+        elif score >= 0.7:
+            score_str = f"[yellow]{score:.4f}[/yellow]"
+        else:
+            score_str = f"[red]{score:.4f}[/red]"
+
+        table.add_row(col_name, info["type"], info["metric"], score_str)
+
+    # Add separator and average
+    table.add_section()
+    if avg_score >= 0.9:
+        avg_str = f"[bold green]{avg_score:.4f}[/bold green]"
+    elif avg_score >= 0.7:
+        avg_str = f"[bold yellow]{avg_score:.4f}[/bold yellow]"
+    else:
+        avg_str = f"[bold red]{avg_score:.4f}[/bold red]"
+
+    table.add_row("[bold]Overall Average[/bold]", "", "", avg_str)
 
     console.print(table)
 
@@ -281,7 +360,16 @@ def test(
         console.print(f"  [red]❌ Generation failed: {e}[/red]")
         raise typer.Exit(1)
 
-    # 9. GPU memory usage
+    # 9. Evaluate synthetic data quality
+    console.print("\n[bold cyan]📈 Evaluating Synthetic Data Quality[/bold cyan]")
+    try:
+        scores, avg_score = evaluate_quality(data, synthetic, metadata)
+        display_quality_scores(scores, avg_score)
+    except Exception as e:
+        console.print(f"  [yellow]⚠️ Quality evaluation failed: {e}[/yellow]")
+        avg_score = None
+
+    # 10. GPU memory usage
     if torch.cuda.is_available():
         console.print("\n[bold cyan]🔍 GPU Memory Usage[/bold cyan]")
         allocated = torch.cuda.memory_allocated(0) / 1024**2
@@ -294,7 +382,7 @@ def test(
         else:
             console.print("  ⚠️ No GPU memory allocated")
 
-    # 10. Summary
+    # 11. Summary
     summary_table = Table(title="Test Summary", show_header=False)
     summary_table.add_column("Check", style="cyan")
     summary_table.add_column("Status", style="green")
@@ -308,6 +396,13 @@ def test(
     summary_table.add_row("Save/Load", "✅ Working")
     summary_table.add_row("Generation", f"✅ {samples:,} samples")
     summary_table.add_row("Schema", "✅ Valid")
+    if avg_score is not None:
+        if avg_score >= 0.9:
+            summary_table.add_row("Quality", f"✅ {avg_score:.4f}")
+        elif avg_score >= 0.7:
+            summary_table.add_row("Quality", f"⚠️ {avg_score:.4f}")
+        else:
+            summary_table.add_row("Quality", f"❌ {avg_score:.4f}")
 
     console.print("\n")
     console.print(summary_table)
