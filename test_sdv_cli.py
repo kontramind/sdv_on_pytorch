@@ -103,35 +103,27 @@ def generate_training_data(rows: int) -> pd.DataFrame:
 def create_synthesizer(
     synth_type: SynthesizerType,
     metadata: Metadata,
-    epochs: int,
-    batch_size: int,
     use_gpu: bool,
 ) -> tuple:
-    """Create synthesizer based on type."""
+    """Create synthesizer based on type. Uses SDV library defaults for epochs/batch_size."""
     gpu_models = {SynthesizerType.tvae, SynthesizerType.ctgan, SynthesizerType.copulagan}
     supports_gpu = synth_type in gpu_models
 
     if synth_type == SynthesizerType.tvae:
         model = TVAESynthesizer(
             metadata,
-            epochs=epochs,
-            batch_size=batch_size,
             enable_gpu=use_gpu,
             verbose=True,
         )
     elif synth_type == SynthesizerType.ctgan:
         model = CTGANSynthesizer(
             metadata,
-            epochs=epochs,
-            batch_size=batch_size,
             enable_gpu=use_gpu,
             verbose=True,
         )
     elif synth_type == SynthesizerType.copulagan:
         model = CopulaGANSynthesizer(
             metadata,
-            epochs=epochs,
-            batch_size=batch_size,
             enable_gpu=use_gpu,
             verbose=True,
         )
@@ -172,18 +164,6 @@ def test(
         "--training-rows",
         "-t",
         help="Number of training data rows",
-    ),
-    epochs: int = typer.Option(
-        50,
-        "--epochs",
-        "-e",
-        help="Training epochs (neural models only)",
-    ),
-    batch_size: int = typer.Option(
-        500,
-        "--batch-size",
-        "-b",
-        help="Batch size (neural models only)",
     ),
     no_gpu: bool = typer.Option(
         False,
@@ -230,14 +210,10 @@ def test(
 
     # 4. Initialize synthesizer
     console.print(f"\n[bold cyan]🚀 Initializing {synthesizer.value.upper()} synthesizer[/bold cyan]")
-    model, supports_gpu = create_synthesizer(
-        synthesizer, metadata, epochs, batch_size, use_gpu
-    )
+    model, supports_gpu = create_synthesizer(synthesizer, metadata, use_gpu)
 
     if supports_gpu:
         console.print(f"  Mode: {'GPU' if use_gpu else 'CPU'}")
-        console.print(f"  Epochs: {epochs}")
-        console.print(f"  Batch size: {batch_size}")
     else:
         console.print("  Mode: CPU (statistical model)")
     console.print("  ✅ Synthesizer initialized")
